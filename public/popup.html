@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bulk move chats</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main>
+    <h1>Bulk move chats</h1>
+
+    <label>
+      Destination project
+      <input id="projectName" type="text" autocomplete="off" placeholder="Exact project name" />
+    </label>
+
+    <label>
+      Delay after each move (ms)
+      <input id="delayMs" type="number" min="500" max="10000" step="100" value="1500" />
+    </label>
+
+    <div class="actions">
+      <button id="testOne" class="secondary">Test one</button>
+      <button id="start">Move all</button>
+      <button id="stop" class="danger">Stop</button>
+    </div>
+
+    <pre id="status">Ready.</pre>
+
+    <p class="hint">
+      Keep the ChatGPT tab open. “Test one” is recommended before “Move all”.
+    </p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

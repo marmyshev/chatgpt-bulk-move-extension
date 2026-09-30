@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT Bulk Move Chats",
+  "description": "Moves unprojected ChatGPT chats into one selected project by automating the visible ChatGPT UI.",
+  "version": "0.2.0",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "storage"
+  ],
+  "action": {
+    "default_title": "Bulk move ChatGPT chats",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+name: Build Chrome Extension
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Typecheck and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Package extension
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          VERSION="$(node -p 'require("./package.json").version')"
+          (cd dist && zip -r "../artifacts/chatgpt-bulk-move-extension-v${VERSION}.zip" .)
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: chatgpt-bulk-move-extension
+          path: artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 30
