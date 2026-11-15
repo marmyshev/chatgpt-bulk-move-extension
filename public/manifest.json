@@ -1,11 +1,16 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Bulk Move Chats",
-  "description": "Moves unprojected ChatGPT chats into one selected project by automating the visible ChatGPT UI.",
-  "version": "0.2.0",
+  "description": "Lists your ChatGPT conversations, lets you select them, and bulk-moves them into a project through ChatGPT's own backend API.",
+  "version": "0.3.0",
   "minimum_chrome_version": "114",
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*"
   ],
   "action": {
     "default_title": "Bulk move ChatGPT chats",

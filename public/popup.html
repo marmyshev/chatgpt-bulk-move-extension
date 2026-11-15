@@ -10,27 +10,22 @@
   <main>
     <h1>Bulk move chats</h1>
 
-    <label>
-      Destination project
-      <input id="projectName" type="text" autocomplete="off" placeholder="Exact project name" />
-    </label>
+    <p class="hint">
+      Opens a selection panel inside the ChatGPT tab. Chats are listed and moved through
+      ChatGPT's own backend API.
+    </p>
 
     <label>
-      Delay after each move (ms)
-      <input id="delayMs" type="number" min="500" max="10000" step="100" value="1500" />
+      Delay between moves (ms)
+      <input id="delayMs" type="number" min="0" max="10000" step="50" value="400" />
     </label>
 
     <div class="actions">
-      <button id="testOne" class="secondary">Test one</button>
-      <button id="start">Move all</button>
-      <button id="stop" class="danger">Stop</button>
+      <button id="open">Open panel</button>
+      <button id="stop" class="danger" disabled>Stop</button>
     </div>
 
     <pre id="status">Ready.</pre>
-
-    <p class="hint">
-      Keep the ChatGPT tab open. “Test one” is recommended before “Move all”.
-    </p>
   </main>
   <script src="popup.js"></script>
 </body>

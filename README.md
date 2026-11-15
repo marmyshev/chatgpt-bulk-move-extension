@@ -1,14 +1,62 @@
 # ChatGPT Bulk Move Chats
 
-A small TypeScript / Manifest V3 Chrome extension that automates the **visible ChatGPT UI** to move chats from the root **Chats** section into a selected project.
+A TypeScript / Manifest V3 Chrome extension that lists your ChatGPT conversations, lets you select any subset of them, and bulk-moves them into a project.
 
-It deliberately does **not** call undocumented ChatGPT APIs.
+Version 0.3.0 replaced the previous DOM/click automation with direct calls to ChatGPT's own backend API, issued from a content script running on `chatgpt.com` (so cookies, `Origin`, and Cloudflare clearance all apply automatically).
+
+Permissions requested: `storage` (settings), `activeTab` + `scripting` (inject the panel into an already-open tab), and the `https://chatgpt.com/*` host permission (so the popup can identify the ChatGPT tab).
 
 ## Important limitation
 
-The ChatGPT DOM and menu structure are private implementation details and can change at any time. This extension uses conservative DOM heuristics and English UI labels. If it cannot confidently identify the root chat section, it stops rather than scanning every conversation link.
+`/backend-api/*` is an undocumented, private API. It can change or disappear without notice. Use at your own risk, and prefer small batches first.
 
-Before moving everything, use **Test one**.
+## How it works
+
+```
+Popup (launcher)  ──OPEN_PANEL──▶  Content script on chatgpt.com
+                                        │
+                                        ├── Shadow DOM overlay panel (list + selection)
+                                        └── API client (same-origin fetch)
+```
+
+### Endpoints used
+
+| Purpose | Request |
+|---|---|
+| Access token | `GET /api/auth/session` → `accessToken` |
+| Account id | `GET /backend-api/accounts/check/v4-2023-04-27` → `chatgpt-account-id` header |
+| Conversations | `GET /backend-api/conversations?offset=N&limit=100&order=updated&is_archived=false`, paged until `total` |
+| Projects | `GET /backend-api/gizmos/snorlax/sidebar?conversations_per_gizmo=0&limit=20&owned_only=false`, cursor-paged |
+| Move | `PATCH /backend-api/conversation/{id}` with body `{"gizmo_id":"g-p-..."}` → `{"success":true}` |
+
+Every request carries `authorization: Bearer <token>`, `chatgpt-account-id`, and `oai-device-id` (read from the `oai-did` cookie).
+
+### Resilience
+
+- `401` / `403` → the session token is re-fetched once and the request retried.
+- `429` and `5xx` → exponential backoff honoring `Retry-After`, up to 5 attempts.
+- A failed individual move is recorded on its row and does not abort the batch.
+
+## Using it
+
+1. Open `https://chatgpt.com/`.
+2. Click the extension icon, then **Open panel**.
+3. The panel loads every project and every conversation (paged, progress shown in the header).
+4. Choose a scope: **Chats without a project**, **All chats**, or **In: \<project\>**.
+5. Optionally filter by title, sort by Title or Updated, and toggle **Archived · include**.
+6. Select rows with the checkboxes. Shift-click selects a range. **Select all shown** respects the current filter.
+7. Pick a destination in **Move to project** (or **— Remove from project —** to clear the assignment).
+8. Click **Move selected**.
+
+Progress is shown per row (`pending` → `moving` → `moved` / `failed`) and in the footer. **Stop** halts after the current move finishes.
+
+ChatGPT's own sidebar does not live-update from these API calls — reload the page to see the new grouping.
+
+Press `Escape` or click the backdrop to close the panel (disabled while a run is in progress).
+
+## Settings
+
+- **Delay between moves (ms)** — set in the popup or the panel, persisted in `chrome.storage.sync`. Default `400`. Lower it to go faster at a higher risk of rate limiting.
 
 ## Build locally
 
@@ -19,6 +67,25 @@ npm run build
 ```
 
 The unpacked extension is generated in `dist/`.
+
+## Install locally
+
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Click **Load unpacked**.
+4. Select the generated `dist/` directory.
+5. Open or reload `https://chatgpt.com/`.
+
+## Source layout
+
+| File | Role |
+|---|---|
+| [`src/api.ts`](src/api.ts) | Same-origin ChatGPT backend client: auth, paging, retries, move |
+| [`src/panel.ts`](src/panel.ts) | Shadow DOM overlay: list, filters, selection, sequential move runner |
+| [`src/panel-styles.ts`](src/panel-styles.ts) | Panel CSS, injected into the shadow root |
+| [`src/content.ts`](src/content.ts) | Thin host: mounts/unmounts the panel, answers popup messages |
+| [`src/popup.ts`](src/popup.ts) | Launcher: delay setting, open panel, stop, status |
+| [`src/shared.ts`](src/shared.ts) | Shared types and message contracts |
 
 ## GitHub Actions CI
 
@@ -48,81 +115,9 @@ CI performs these steps:
 
 Artifacts are retained for 30 days by the workflow configuration.
 
-## Install locally
-
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Click **Load unpacked**.
-4. Select the generated `dist/` directory.
-5. Open or reload `https://chatgpt.com/`.
-6. Open the extension popup.
-7. Enter the **exact** destination project name.
-8. Click **Test one**.
-9. Verify the chat moved to the correct project.
-10. Click **Move all**.
-
-Keep the ChatGPT tab open during the run.
-
-## How it works
-
-For each currently loaded chat in the root Chats section:
-
-1. Finds the first visible `/c/...` link after the root `Chats` heading.
-2. Dispatches a right-click (`contextmenu`) event.
-3. Falls back to the row's menu/options button if needed.
-4. Clicks `Move to project`.
-5. Selects the exact destination project name.
-6. Waits for the row to disappear from the root list.
-7. If the chat does not move, or the requested project is unavailable for that chat, records it as **Skipped** and continues.
-8. Repeats.
-9. If no chat is available, attempts `Show more` / `Load more` or scrolls the sidebar to trigger lazy loading.
-10. Stops after several stable empty rounds.
-
-## Selector/text maintenance
-
-The main UI assumptions are isolated near the top of `src/content.ts`:
-
-```ts
-const UI_TEXT = {
-  rootSectionLabels: ["Chats", "Recent", "Your chats"],
-  moveToProject: ["Move to project"],
-  loadMore: ["Show more", "Load more"],
-  projectSearchPlaceholders: ["Search projects", "Search"]
-};
-```
-
-If ChatGPT changes its labels or DOM structure, update these heuristics rather than spreading selectors throughout the code.
-
-## Safety behavior
-
-- It only considers conversation links in the sidebar that appear after the recognized root chat section label.
-- If the root section cannot be confidently located, it stops.
-- If more than one visible project menu item has the exact requested name, it stops rather than clicking an ambiguous destination.
-- A failed individual chat does not abort the batch; it is marked skipped and excluded from further attempts during that run.
-- A missing destination project for a particular chat is treated as a skip.
-- A move is only counted as successful after the chat disappears from the root list.
-- A Stop button cancels the loop.
-- There is a configurable delay between attempts.
-
 ## Known limitations
 
-- English ChatGPT UI is assumed by default.
-- Duplicate project names are intentionally treated as ambiguous.
-- A future ChatGPT UI update may require selector changes.
-- Context-menu automation may behave differently if ChatGPT replaces its menu implementation.
-- This is UI automation, so it is slower and less stable than an official bulk-move API would be.
-
-## Publish this repository to GitHub
-
-Create an empty repository on GitHub, then from this project directory run:
-
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin git@github.com:<owner>/<repository>.git
-git push -u origin main
-```
-
-After the first push, the **Build Chrome Extension** workflow runs automatically. No repository secrets are required for the build workflow.
+- Private API; a ChatGPT backend change can break the extension.
+- Moves are sequential by design to stay well under rate limits.
+- The ChatGPT sidebar needs a page reload to reflect the new grouping.
+- Projects shared with you but not owned by you may reject a move; that row is marked `failed` with the server message.
